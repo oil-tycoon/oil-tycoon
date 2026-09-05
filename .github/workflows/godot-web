@@ -1,0 +1,92 @@
+# Replace your existing workflow with this file.
+# Set matrix.godot to the exact version shown in Help > About Godot.
+# Commit a Web preset named "Web" in export_presets.cfg beside project.godot.
+# Set repository Settings > Pages > Source to "GitHub Actions".
+name: Godot Web CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_PATH: "." # Folder containing project.godot; change if it is in a subfolder.
+
+jobs:
+  export-web:
+    name: Web Export
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        godot: ["4.5.1"] # EXAMPLE: replace with your exact Godot 4 version.
+    container:
+      image: barichello/godot-ci:${{ matrix.godot }}
+    env:
+      GODOT_VERSION: ${{ matrix.godot }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+          persist-credentials: false
+
+      - name: Set up export templates
+        run: |
+          godot --version
+          if [ "$HOME" != "/root" ]; then
+            mkdir -p "$HOME/.local/share/godot/export_templates"
+            cp -a "/root/.local/share/godot/export_templates/${GODOT_VERSION}.stable" \
+              "$HOME/.local/share/godot/export_templates/"
+          fi
+
+      - name: Web Build
+        run: |
+          if [ ! -f "$PROJECT_PATH/project.godot" ]; then
+            echo "::error::project.godot is missing. Commit your Godot source project and set PROJECT_PATH to its folder."
+            exit 1
+          fi
+          if [ ! -f "$PROJECT_PATH/export_presets.cfg" ]; then
+            echo "::error::export_presets.cfg is missing. Create a Web preset named Web in Godot and commit the file beside project.godot."
+            exit 1
+          fi
+          mkdir -p "$GITHUB_WORKSPACE/build/web"
+          godot --headless --path "$PROJECT_PATH" --import
+          godot --headless --path "$PROJECT_PATH" --export-release "Web" \
+            "$GITHUB_WORKSPACE/build/web/index.html"
+          test -s "$GITHUB_WORKSPACE/build/web/index.html"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/web
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: export-web
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
