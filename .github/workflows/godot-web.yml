@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        godot: ["4.5.1"] # EXAMPLE: replace with your exact Godot 4 version.
+        godot: ["4.7.2"] # EXAMPLE: replace with your exact Godot 4 version.
     container:
       image: barichello/godot-ci:${{ matrix.godot }}
     env:
